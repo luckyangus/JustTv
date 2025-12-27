@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import { gunzip } from 'zlib';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
-import { configSelfCheck, setCachedConfig } from '@/lib/config';
+import { configSelfCheck, getConfig, setCachedConfig } from '@/lib/config';
 import { SimpleCrypto } from '@/lib/crypto';
 import { db } from '@/lib/db';
 
@@ -31,8 +31,15 @@ export async function POST(req: NextRequest) {
     }
 
     // 检查用户权限（只有站长可以导入数据）
-    if (authInfo.username !== process.env.USERNAME) {
-      return NextResponse.json({ error: '权限不足，只有站长可以导入数据' }, { status: 401 });
+    const config = await getConfig();
+    const user = config.UserConfig.Users.find(
+      (u: any) => u.username === authInfo.username
+    );
+    if (!user || user.role !== 'owner' || user.banned) {
+      return NextResponse.json(
+        { error: '权限不足，只有站长可以导入数据' },
+        { status: 401 }
+      );
     }
 
     // 解析表单数据
@@ -56,7 +63,10 @@ export async function POST(req: NextRequest) {
     try {
       decryptedData = SimpleCrypto.decrypt(encryptedData, password);
     } catch (error) {
-      return NextResponse.json({ error: '解密失败，请检查密码是否正确' }, { status: 400 });
+      return NextResponse.json(
+        { error: '解密失败，请检查密码是否正确' },
+        { status: 400 }
+      );
     }
 
     // 解压缩数据
@@ -73,7 +83,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 验证数据格式
-    if (!importData.data || !importData.data.adminConfig || !importData.data.userData) {
+    if (
+      !importData.data ||
+      !importData.data.adminConfig ||
+      !importData.data.userData
+    ) {
       return NextResponse.json({ error: '备份文件格式无效' }, { status: 400 });
     }
 
@@ -92,7 +106,25 @@ export async function POST(req: NextRequest) {
 
       // 重新注册用户（包含密码）
       if (user.password) {
-        await db.registerUser(username, user.password);
+        // 检查密码是否已经是哈希格式
+        if (user.password.startsWith('$scrypt$')) {
+          // 如果是哈希格式，直接插入数据库
+          const storage = (db as any).storage;
+          if (storage && typeof storage.getPool === 'function') {
+            const connection = await storage.getPool().getConnection();
+            try {
+              await connection.execute(
+                'INSERT INTO users (username, password, created_at) VALUES (?, ?, CONVERT_TZ(UTC_TIMESTAMP(), "+00:00", "+08:00"))',
+                [username, user.password]
+              );
+            } finally {
+              connection.release();
+            }
+          }
+        } else {
+          // 如果是明文密码，使用 registerUser（会自动哈希）
+          await db.registerUser(username, user.password);
+        }
       }
 
       // 导入播放记录
@@ -111,7 +143,8 @@ export async function POST(req: NextRequest) {
 
       // 导入搜索历史
       if (user.searchHistory && Array.isArray(user.searchHistory)) {
-        for (const keyword of user.searchHistory.reverse()) { // 反转以保持顺序
+        for (const keyword of user.searchHistory.reverse()) {
+          // 反转以保持顺序
           await db.addSearchHistory(username, keyword);
         }
       }
@@ -131,9 +164,7 @@ export async function POST(req: NextRequest) {
       message: '数据导入成功',
       importedUsers: Object.keys(userData).length,
       timestamp: importData.timestamp,
-      serverVersion: typeof importData.serverVersion === 'string' ? importData.serverVersion : '未知版本'
     });
-
   } catch (error) {
     console.error('数据导入失败:', error);
     return NextResponse.json(

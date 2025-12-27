@@ -4,6 +4,28 @@
 const http = require('http');
 const path = require('path');
 
+// 初始化默认管理员账户
+async function initDefaultAdmin() {
+  try {
+    const { db } = require('./src/lib/db');
+
+    // 检查管理员是否已存在
+    const adminExists = await db.checkUserExist('admin');
+
+    if (!adminExists) {
+      console.log('Creating default admin account...');
+      await db.registerUser('admin', '123456');
+      console.log(
+        '✅ Default admin account created: username=admin, password=123456'
+      );
+    } else {
+      console.log('ℹ️  Admin account already exists');
+    }
+  } catch (error) {
+    console.error('❌ Error initializing default admin:', error.message);
+  }
+}
+
 // 调用 generate-manifest.js 生成 manifest.json
 function generateManifest() {
   console.log('Generating manifest.json for Docker deployment...');
@@ -23,12 +45,16 @@ function generateManifest() {
 
 generateManifest();
 
+// 初始化默认管理员账户
+initDefaultAdmin().catch(console.error);
+
 // 直接在当前进程中启动 standalone Server（`server.js`）
 require('./server.js');
 
 // 每 1 秒轮询一次，直到请求成功
-const TARGET_URL = `http://${process.env.HOSTNAME || 'localhost'}:${process.env.PORT || 3000
-  }/login`;
+const TARGET_URL = `http://${process.env.HOSTNAME || 'localhost'}:${
+  process.env.PORT || 3000
+}/login`;
 
 const intervalId = setInterval(() => {
   console.log(`Fetching ${TARGET_URL} ...`);
@@ -58,8 +84,9 @@ const intervalId = setInterval(() => {
 
 // 执行 cron 任务的函数
 function executeCronJob() {
-  const cronUrl = `http://${process.env.HOSTNAME || 'localhost'}:${process.env.PORT || 3000
-    }/api/cron`;
+  const cronUrl = `http://${process.env.HOSTNAME || 'localhost'}:${
+    process.env.PORT || 3000
+  }/api/cron`;
 
   console.log(`Executing cron job: ${cronUrl}`);
 

@@ -3,6 +3,7 @@ export interface AdminConfig {
     URL: string;
     AutoUpdate: boolean;
     LastCheck: string;
+    Overwrite?: boolean; // 是否覆盖已有配置
   };
   ConfigFile: string;
   SiteConfig: {
@@ -33,6 +34,7 @@ export interface AdminConfig {
   SourceConfig: {
     key: string;
     name: string;
+    displayName?: string; // 自定义显示名称（给用户看的）
     api: string;
     detail?: string;
     from: 'config' | 'custom';
@@ -48,7 +50,8 @@ export interface AdminConfig {
   LiveConfig?: {
     key: string;
     name: string;
-    url: string;  // m3u 地址
+    displayName?: string; // 自定义显示名称（给用户看的）
+    url: string; // m3u 地址
     ua?: string;
     epg?: string; // 节目单
     from: 'config' | 'custom';

@@ -9,7 +9,16 @@ import { db } from '@/lib/db';
 export const runtime = 'nodejs';
 
 // 支持的操作类型
-type Action = 'add' | 'disable' | 'enable' | 'delete' | 'sort' | 'batch_disable' | 'batch_enable' | 'batch_delete';
+type Action =
+  | 'add'
+  | 'disable'
+  | 'enable'
+  | 'delete'
+  | 'edit'
+  | 'sort'
+  | 'batch_disable'
+  | 'batch_enable'
+  | 'batch_delete';
 
 interface BaseBody {
   action?: Action;
@@ -37,7 +46,17 @@ export async function POST(request: NextRequest) {
     const username = authInfo.username;
 
     // 基础校验
-    const ACTIONS: Action[] = ['add', 'disable', 'enable', 'delete', 'sort', 'batch_disable', 'batch_enable', 'batch_delete'];
+    const ACTIONS: Action[] = [
+      'add',
+      'disable',
+      'enable',
+      'delete',
+      'edit',
+      'sort',
+      'batch_disable',
+      'batch_enable',
+      'batch_delete',
+    ];
     if (!username || !action || !ACTIONS.includes(action)) {
       return NextResponse.json({ error: '参数格式错误' }, { status: 400 });
     }
@@ -46,20 +65,23 @@ export async function POST(request: NextRequest) {
     const adminConfig = await getConfig();
 
     // 权限与身份校验
-    if (username !== process.env.USERNAME) {
-      const userEntry = adminConfig.UserConfig.Users.find(
-        (u) => u.username === username
-      );
-      if (!userEntry || userEntry.role !== 'admin' || userEntry.banned) {
-        return NextResponse.json({ error: '权限不足' }, { status: 401 });
-      }
+    const userEntry = adminConfig.UserConfig.Users.find(
+      (u) => u.username === username
+    );
+    if (
+      !userEntry ||
+      (userEntry.role !== 'owner' && userEntry.role !== 'admin') ||
+      userEntry.banned
+    ) {
+      return NextResponse.json({ error: '权限不足' }, { status: 401 });
     }
 
     switch (action) {
       case 'add': {
-        const { key, name, api, detail } = body as {
+        const { key, name, displayName, api, detail } = body as {
           key?: string;
           name?: string;
+          displayName?: string;
           api?: string;
           detail?: string;
         };
@@ -72,6 +94,7 @@ export async function POST(request: NextRequest) {
         adminConfig.SourceConfig.push({
           key,
           name,
+          displayName,
           api,
           detail,
           from: 'custom',
@@ -99,6 +122,25 @@ export async function POST(request: NextRequest) {
         entry.disabled = false;
         break;
       }
+      case 'edit': {
+        const { key, displayName, api, detail } = body as {
+          key?: string;
+          displayName?: string;
+          api?: string;
+          detail?: string;
+        };
+        if (!key || !api) {
+          return NextResponse.json({ error: '缺少必要参数' }, { status: 400 });
+        }
+        const entry = adminConfig.SourceConfig.find((s) => s.key === key);
+        if (!entry)
+          return NextResponse.json({ error: '源不存在' }, { status: 404 });
+        // 不允许修改 name 字段，只允许修改 displayName、api 和 detail
+        entry.displayName = displayName;
+        entry.api = api;
+        entry.detail = detail;
+        break;
+      }
       case 'delete': {
         const { key } = body as { key?: string };
         if (!key)
@@ -115,27 +157,41 @@ export async function POST(request: NextRequest) {
         // 检查并清理用户组和用户的权限数组
         // 清理用户组权限
         if (adminConfig.UserConfig.Tags) {
-          adminConfig.UserConfig.Tags.forEach(tag => {
+          adminConfig.UserConfig.Tags.forEach((tag) => {
             if (tag.enabledApis) {
-              tag.enabledApis = tag.enabledApis.filter(api => api !== key);
+              tag.enabledApis = tag.enabledApis.filter((api) => api !== key);
             }
           });
         }
 
         // 清理用户权限
-        adminConfig.UserConfig.Users.forEach(user => {
+        adminConfig.UserConfig.Users.forEach((user) => {
           if (user.enabledApis) {
-            user.enabledApis = user.enabledApis.filter(api => api !== key);
+            user.enabledApis = user.enabledApis.filter((api) => api !== key);
           }
         });
+
+        // 同时从 ConfigFile 中删除该源
+        try {
+          const fileConfig = JSON.parse(adminConfig.ConfigFile);
+          if (fileConfig.api_site && fileConfig.api_site[key]) {
+            delete fileConfig.api_site[key];
+            adminConfig.ConfigFile = JSON.stringify(fileConfig);
+          }
+        } catch (e) {
+          console.error('更新 ConfigFile 失败:', e);
+        }
         break;
       }
       case 'batch_disable': {
         const { keys } = body as { keys?: string[] };
         if (!Array.isArray(keys) || keys.length === 0) {
-          return NextResponse.json({ error: '缺少 keys 参数或为空' }, { status: 400 });
+          return NextResponse.json(
+            { error: '缺少 keys 参数或为空' },
+            { status: 400 }
+          );
         }
-        keys.forEach(key => {
+        keys.forEach((key) => {
           const entry = adminConfig.SourceConfig.find((s) => s.key === key);
           if (entry) {
             entry.disabled = true;
@@ -146,9 +202,12 @@ export async function POST(request: NextRequest) {
       case 'batch_enable': {
         const { keys } = body as { keys?: string[] };
         if (!Array.isArray(keys) || keys.length === 0) {
-          return NextResponse.json({ error: '缺少 keys 参数或为空' }, { status: 400 });
+          return NextResponse.json(
+            { error: '缺少 keys 参数或为空' },
+            { status: 400 }
+          );
         }
-        keys.forEach(key => {
+        keys.forEach((key) => {
           const entry = adminConfig.SourceConfig.find((s) => s.key === key);
           if (entry) {
             entry.disabled = false;
@@ -159,39 +218,64 @@ export async function POST(request: NextRequest) {
       case 'batch_delete': {
         const { keys } = body as { keys?: string[] };
         if (!Array.isArray(keys) || keys.length === 0) {
-          return NextResponse.json({ error: '缺少 keys 参数或为空' }, { status: 400 });
+          return NextResponse.json(
+            { error: '缺少 keys 参数或为空' },
+            { status: 400 }
+          );
         }
-        // 过滤掉 from=config 的源，但不报错
-        const keysToDelete = keys.filter(key => {
-          const entry = adminConfig.SourceConfig.find((s) => s.key === key);
-          return entry && entry.from !== 'config';
-        });
+        console.log('批量删除请求的 keys:', keys);
 
-        // 批量删除
-        keysToDelete.forEach(key => {
+        // 批量删除所有选中的源（包括 from=config 的源）
+        keys.forEach((key) => {
           const idx = adminConfig.SourceConfig.findIndex((s) => s.key === key);
           if (idx !== -1) {
             adminConfig.SourceConfig.splice(idx, 1);
           }
         });
+        console.log(
+          '删除后 SourceConfig 长度:',
+          adminConfig.SourceConfig.length
+        );
 
-        // 检查并清理用户组和用户的权限数组
-        if (keysToDelete.length > 0) {
-          // 清理用户组权限
-          if (adminConfig.UserConfig.Tags) {
-            adminConfig.UserConfig.Tags.forEach(tag => {
-              if (tag.enabledApis) {
-                tag.enabledApis = tag.enabledApis.filter(api => !keysToDelete.includes(api));
-              }
-            });
-          }
-
-          // 清理用户权限
-          adminConfig.UserConfig.Users.forEach(user => {
-            if (user.enabledApis) {
-              user.enabledApis = user.enabledApis.filter(api => !keysToDelete.includes(api));
+        // 清理用户组权限
+        if (adminConfig.UserConfig.Tags) {
+          adminConfig.UserConfig.Tags.forEach((tag) => {
+            if (tag.enabledApis) {
+              tag.enabledApis = tag.enabledApis.filter(
+                (api) => !keys.includes(api)
+              );
             }
           });
+        }
+
+        // 清理用户权限
+        adminConfig.UserConfig.Users.forEach((user) => {
+          if (user.enabledApis) {
+            user.enabledApis = user.enabledApis.filter(
+              (api) => !keys.includes(api)
+            );
+          }
+        });
+
+        // 同时从 ConfigFile 中删除这些源
+        try {
+          const fileConfig = JSON.parse(adminConfig.ConfigFile);
+          console.log(
+            'ConfigFile 解析前的 api_site keys:',
+            Object.keys(fileConfig.api_site || {})
+          );
+          if (fileConfig.api_site) {
+            keys.forEach((key) => {
+              delete fileConfig.api_site[key];
+            });
+            adminConfig.ConfigFile = JSON.stringify(fileConfig);
+            console.log(
+              'ConfigFile 解析后的 api_site keys:',
+              Object.keys(fileConfig.api_site || {})
+            );
+          }
+        } catch (e) {
+          console.error('更新 ConfigFile 失败:', e);
         }
         break;
       }

@@ -1,4 +1,5 @@
 module.exports = {
+  ignorePatterns: ['public/sw.js', 'public/workbox-*.js'],
   env: {
     browser: true,
     es2021: true,

@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
-import { resetConfig } from '@/lib/config';
+import { getConfig, resetConfig } from '@/lib/config';
 
 export const runtime = 'nodejs';
 
@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
   }
   const username = authInfo.username;
 
-  if (username !== process.env.USERNAME) {
+  // 检查用户是否为 owner
+  const config = await getConfig();
+  const user = config.UserConfig.Users.find((u) => u.username === username);
+  if (!user || user.role !== 'owner' || user.banned) {
     return NextResponse.json({ error: '仅支持站长重置配置' }, { status: 401 });
   }
 

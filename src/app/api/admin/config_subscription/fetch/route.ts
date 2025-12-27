@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getAuthInfoFromCookie } from '@/lib/auth';
+import { getConfig } from '@/lib/config';
 
 export const runtime = 'nodejs';
 
@@ -14,7 +15,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (authInfo.username !== process.env.USERNAME) {
+    const config = await getConfig();
+    const user = config.UserConfig.Users.find(
+      (u) => u.username === authInfo.username
+    );
+    if (!user || user.role !== 'owner' || user.banned) {
       return NextResponse.json(
         { error: '权限不足，只有站长可以拉取配置订阅' },
         { status: 401 }
@@ -53,14 +58,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       configContent: decodedContent,
-      message: '配置拉取成功'
+      message: '配置拉取成功',
     });
-
   } catch (error) {
     console.error('拉取配置失败:', error);
-    return NextResponse.json(
-      { error: '拉取配置失败' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: '拉取配置失败' }, { status: 500 });
   }
 }

@@ -28,9 +28,10 @@ export async function POST(request: NextRequest) {
   try {
     // 检查用户权限
     let adminConfig = await getConfig();
-
-    // 仅站长可以修改配置文件
-    if (username !== process.env.USERNAME) {
+    const user = adminConfig.UserConfig.Users.find(
+      (u: any) => u.username === username
+    );
+    if (!user || user.role !== 'owner' || user.banned) {
       return NextResponse.json(
         { error: '权限不足，只有站长可以修改配置文件' },
         { status: 401 }
@@ -39,7 +40,13 @@ export async function POST(request: NextRequest) {
 
     // 获取请求体
     const body = await request.json();
-    const { configFile, subscriptionUrl, autoUpdate, lastCheckTime } = body;
+    const {
+      configFile,
+      subscriptionUrl,
+      autoUpdate,
+      lastCheckTime,
+      overwrite,
+    } = body;
 
     if (!configFile || typeof configFile !== 'string') {
       return NextResponse.json(
@@ -64,6 +71,7 @@ export async function POST(request: NextRequest) {
         URL: '',
         AutoUpdate: false,
         LastCheck: '',
+        Overwrite: true,
       };
     }
 
@@ -74,9 +82,13 @@ export async function POST(request: NextRequest) {
     if (autoUpdate !== undefined) {
       adminConfig.ConfigSubscribtion.AutoUpdate = autoUpdate;
     }
+    if (overwrite !== undefined) {
+      adminConfig.ConfigSubscribtion.Overwrite = overwrite;
+    }
     adminConfig.ConfigSubscribtion.LastCheck = lastCheckTime || '';
 
-    adminConfig = refineConfig(adminConfig);
+    // 使用 overwrite 参数决定是否覆盖已有配置
+    adminConfig = refineConfig(adminConfig, overwrite !== false);
     // 更新配置文件
     await db.saveAdminConfig(adminConfig);
     return NextResponse.json({

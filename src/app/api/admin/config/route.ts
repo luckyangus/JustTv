@@ -26,23 +26,23 @@ export async function GET(request: NextRequest) {
   const username = authInfo.username;
 
   try {
-    const config = await getConfig();
+    const config = await getConfig(true); // 强制重新加载配置以获取最新的用户信息
     const result: AdminConfigResult = {
       Role: 'owner',
       Config: config,
     };
-    if (username === process.env.USERNAME) {
-      result.Role = 'owner';
+    const user = config.UserConfig.Users.find((u) => u.username === username);
+    if (
+      user &&
+      (user.role === 'owner' || user.role === 'admin') &&
+      !user.banned
+    ) {
+      result.Role = user.role === 'owner' ? 'owner' : 'admin';
     } else {
-      const user = config.UserConfig.Users.find((u) => u.username === username);
-      if (user && user.role === 'admin' && !user.banned) {
-        result.Role = 'admin';
-      } else {
-        return NextResponse.json(
-          { error: '你是管理员吗你就访问？' },
-          { status: 401 }
-        );
-      }
+      return NextResponse.json(
+        { error: '你是管理员吗你就访问？' },
+        { status: 401 }
+      );
     }
 
     return NextResponse.json(result, {

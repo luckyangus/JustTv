@@ -1,29 +1,24 @@
 /* eslint-disable no-console, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
 import { AdminConfig } from './admin.types';
-import { KvrocksStorage } from './kvrocks.db';
-import { RedisStorage } from './redis.db';
+import { MySQLStorage } from './mysql.db';
 import { Favorite, IStorage, PlayRecord, SkipConfig } from './types';
-import { UpstashRedisStorage } from './upstash.db';
 
-// storage type 常量: 'localstorage' | 'redis' | 'upstash'，默认 'localstorage'
+// storage type 常量: 'localstorage' | 'mysql'，默认 'localstorage'
+// 优先使用服务端环境变量（不带 NEXT_PUBLIC_ 前缀），其次使用客户端环境变量
 const STORAGE_TYPE =
+  (process.env.STORAGE_TYPE as 'localstorage' | 'mysql' | undefined) ||
   (process.env.NEXT_PUBLIC_STORAGE_TYPE as
     | 'localstorage'
-    | 'redis'
-    | 'upstash'
-    | 'kvrocks'
-    | undefined) || 'localstorage';
+    | 'mysql'
+    | undefined) ||
+  'localstorage';
 
 // 创建存储实例
 function createStorage(): IStorage {
   switch (STORAGE_TYPE) {
-    case 'redis':
-      return new RedisStorage();
-    case 'upstash':
-      return new UpstashRedisStorage();
-    case 'kvrocks':
-      return new KvrocksStorage();
+    case 'mysql':
+      return new MySQLStorage();
     case 'localstorage':
     default:
       return null as unknown as IStorage;
@@ -171,6 +166,16 @@ export class DbManager {
   async getAllUsers(): Promise<string[]> {
     if (typeof (this.storage as any).getAllUsers === 'function') {
       return (this.storage as any).getAllUsers();
+    }
+    return [];
+  }
+
+  // 获取全部用户及其角色
+  async getAllUsersWithRole(): Promise<
+    Array<{ username: string; role?: string }>
+  > {
+    if (typeof (this.storage as any).getAllUsersWithRole === 'function') {
+      return (this.storage as any).getAllUsersWithRole();
     }
     return [];
   }

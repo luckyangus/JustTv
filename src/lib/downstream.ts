@@ -106,7 +106,7 @@ async function searchWithCache(
         episodes,
         episodes_titles: titles,
         source: apiSite.key,
-        source_name: apiSite.name,
+        source_name: apiSite.displayName || apiSite.name,
         class: item.vod_class,
         year: item.vod_year
           ? item.vod_year.match(/\d{4}/)?.[0] || ''
@@ -118,7 +118,9 @@ async function searchWithCache(
     });
 
     // 过滤掉集数为 0 的结果
-    const results = allResults.filter((result: SearchResult) => result.episodes.length > 0);
+    const results = allResults.filter(
+      (result: SearchResult) => result.episodes.length > 0
+    );
 
     const pageCount = page === 1 ? data.pagecount || 1 : undefined;
     // 写入缓存（成功）
@@ -127,7 +129,10 @@ async function searchWithCache(
   } catch (error: any) {
     clearTimeout(timeoutId);
     // 识别被 AbortController 中止（超时）
-    const aborted = error?.name === 'AbortError' || error?.code === 20 || error?.message?.includes('aborted');
+    const aborted =
+      error?.name === 'AbortError' ||
+      error?.code === 20 ||
+      error?.message?.includes('aborted');
     if (aborted) {
       setCachedSearchPage(apiSite.key, query, page, 'timeout', []);
     }
@@ -145,7 +150,13 @@ export async function searchFromApi(
       apiBaseUrl + API_CONFIG.search.path + encodeURIComponent(query);
 
     // 使用新的缓存搜索函数处理第一页
-    const firstPageResult = await searchWithCache(apiSite, query, 1, apiUrl, 8000);
+    const firstPageResult = await searchWithCache(
+      apiSite,
+      query,
+      1,
+      apiUrl,
+      8000
+    );
     const results = firstPageResult.results;
     const pageCountFromFirst = firstPageResult.pageCount;
 
@@ -170,7 +181,13 @@ export async function searchFromApi(
 
         const pagePromise = (async () => {
           // 使用新的缓存搜索函数处理分页
-          const pageResult = await searchWithCache(apiSite, query, page, pageUrl, 8000);
+          const pageResult = await searchWithCache(
+            apiSite,
+            query,
+            page,
+            pageUrl,
+            8000
+          );
           return pageResult.results;
         })();
 
@@ -275,7 +292,7 @@ export async function getDetailFromApi(
     episodes,
     episodes_titles: titles,
     source: apiSite.key,
-    source_name: apiSite.name,
+    source_name: apiSite.displayName || apiSite.name,
     class: videoDetail.vod_class,
     year: videoDetail.vod_year
       ? videoDetail.vod_year.match(/\d{4}/)?.[0] || ''
@@ -357,7 +374,7 @@ async function handleSpecialSourceDetail(
     episodes: matches,
     episodes_titles,
     source: apiSite.key,
-    source_name: apiSite.name,
+    source_name: apiSite.displayName || apiSite.name,
     class: '',
     year: yearText,
     desc: descText,

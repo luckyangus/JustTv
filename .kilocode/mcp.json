@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "mysql": {
+      "args": ["-y", "@f4ww4z/mcp-mysql-server"],
+      "command": "npx",
+      "env": {
+        "MYSQL_DATABASE": "154.12.30.132",
+        "MYSQL_HOST": "3306",
+        "MYSQL_PASSWORD": "nieyTDLNzMXZ2TcL",
+        "MYSQL_USER": "justtv"
+      },
+      "alwaysAllow": [
+        "connect_db",
+        "list_tables",
+        "execute",
+        "describe_table",
+        "query"
+      ]
+    }
+  }
+}
